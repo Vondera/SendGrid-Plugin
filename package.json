@@ -1,0 +1,22 @@
+{
+  "name": "vondera-sendgrid-plugin",
+  "version": "1.0.0",
+  "description": "Vondera plugin for SendGrid email notifications on new orders - Built with Supabase Edge Functions",
+  "main": "supabase/functions/vondera-sendgrid/index.ts",
+  "scripts": {
+    "deploy": "./deploy.sh",
+    "deploy:main": "supabase functions deploy vondera-sendgrid --project-ref mbijjcpkflglumzybund --no-verify-jwt",
+    "deploy:email": "supabase functions deploy send-order-email --project-ref mbijjcpkflglumzybund --no-verify-jwt"
+  },
+  "keywords": [
+    "vondera",
+    "sendgrid",
+    "plugin",
+    "webhook",
+    "supabase",
+    "edge-functions"
+  ],
+  "author": "",
+  "license": "ISC"
+}
+
