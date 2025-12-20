@@ -25,6 +25,7 @@ This plugin is built as **Supabase Edge Functions** (serverless Deno runtime):
 - **SendGrid Account**: [sendgrid.com](https://sendgrid.com) - Free tier: 100 emails/day
 - **Vondera Developer Account**: For plugin registration
 - **Supabase CLI**: For deployment (see installation below)
+- **Node.js** (optional): For local development and using the VonderaPlugin SDK
 
 ## 🛠️ Installation
 
@@ -100,6 +101,198 @@ Or use the deployment script:
 ```bash
 ./deploy.sh
 ```
+
+## 📦 Using the VonderaPlugin SDK
+
+This plugin uses the [VonderaPlugin SDK](https://www.npmjs.com/package/vondera-app-developer) for interacting with the Vondera API. While the Edge Functions use a simplified client implementation, you can use the full SDK for local development, testing, or custom integrations.
+
+### Installation
+
+```bash
+npm install vondera-app-developer
+```
+
+### Basic Usage
+
+```javascript
+const { VonderaApp } = require('vondera-app-developer');
+
+// Initialize the Vondera client
+const vonderaApp = new VonderaApp({
+  clientId: process.env.VONDERA_CLIENT_ID,
+  clientSecret: process.env.VONDERA_CLIENT_SECRET,
+  appId: process.env.VONDERA_APP_ID,
+  locale: 'en',
+  timezone: 'Africa/Cairo'
+});
+
+// Set access token (received from installation webhook)
+vonderaApp.setAccessToken(accessToken);
+
+// Make API calls
+const orders = await vonderaApp.getOrders();
+const store = await vonderaApp.getStore(storeId);
+```
+
+### Configuration Options
+
+The VonderaApp constructor accepts:
+
+| Option | Type | Required | Description |
+|--------|------|----------|-------------|
+| `clientId` | string | Yes | Your Vondera app client ID (from developer dashboard) |
+| `clientSecret` | string | Yes | Your Vondera app client secret (from developer dashboard) |
+| `appId` | string | Yes | Your Vondera app ID (from developer dashboard) |
+| `locale` | string | No | Locale code (default: `'en'`) |
+| `timezone` | string | No | Timezone (default: `'Africa/Cairo'`) |
+
+### Common Methods
+
+The SDK provides methods to interact with the Vondera API:
+
+```javascript
+// Get orders for a store
+const orders = await vonderaApp.getOrders({
+  storeId: 'store_123',
+  status: 'pending',
+  limit: 50
+});
+
+// Get a specific order by ID
+const order = await vonderaApp.getOrder(orderId);
+
+// Get store information
+const store = await vonderaApp.getStore(storeId);
+
+// Get products for a store
+const products = await vonderaApp.getProducts(storeId);
+
+// Refresh access token when it expires
+const newToken = await vonderaApp.refreshToken(refreshToken);
+```
+
+### Webhook Handling Example
+
+Use the SDK in your webhook handlers to interact with Vondera:
+
+```javascript
+const express = require('express');
+const { VonderaApp } = require('vondera-app-developer');
+const app = express();
+
+app.use(express.json());
+
+// Initialize Vondera client
+const vonderaApp = new VonderaApp({
+  clientId: process.env.VONDERA_CLIENT_ID,
+  clientSecret: process.env.VONDERA_CLIENT_SECRET,
+  appId: process.env.VONDERA_APP_ID,
+});
+
+// Installation webhook
+app.post('/webhook/install', async (req, res) => {
+  const { store_id, access_token, refresh_token } = req.body;
+  
+  try {
+    // Set access token for this store
+    vonderaApp.setAccessToken(access_token);
+    
+    // Optionally fetch store details
+    const store = await vonderaApp.getStore(store_id);
+    
+    // Store tokens in database
+    await saveTokens(store_id, access_token, refresh_token);
+    
+    res.json({ success: true, store });
+  } catch (error) {
+    console.error('Installation error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+```
+
+### Error Handling
+
+Handle token expiration and API errors:
+
+```javascript
+async function fetchOrdersWithRetry(vonderaApp, refreshToken) {
+  try {
+    const orders = await vonderaApp.getOrders();
+    return orders;
+  } catch (error) {
+    if (error.status === 401 || error.statusCode === 401) {
+      // Token expired, refresh it
+      console.log('Token expired, refreshing...');
+      const newToken = await vonderaApp.refreshToken(refreshToken);
+      vonderaApp.setAccessToken(newToken);
+      
+      // Update token in database
+      await updateToken(storeId, newToken);
+      
+      // Retry request
+      return await vonderaApp.getOrders();
+    }
+    throw error;
+  }
+}
+```
+
+### TypeScript Support
+
+The package includes TypeScript definitions:
+
+```typescript
+import { VonderaApp, VonderaConfig, Order, Store } from 'vondera-app-developer';
+
+const config: VonderaConfig = {
+  clientId: process.env.VONDERA_CLIENT_ID!,
+  clientSecret: process.env.VONDERA_CLIENT_SECRET!,
+  appId: process.env.VONDERA_APP_ID!,
+  locale: 'en',
+  timezone: 'Africa/Cairo'
+};
+
+const vonderaApp = new VonderaApp(config);
+const orders: Order[] = await vonderaApp.getOrders();
+```
+
+### Local Development Setup
+
+For local development and testing:
+
+```bash
+# Install dependencies
+npm install vondera-app-developer
+
+# Create .env file
+cat > .env << EOF
+VONDERA_CLIENT_ID=your_client_id
+VONDERA_CLIENT_SECRET=your_client_secret
+VONDERA_APP_ID=your_app_id
+VONDERA_LOCALE=en
+VONDERA_TIMEZONE=Africa/Cairo
+EOF
+
+# Run your local server
+node server.js
+```
+
+### Documentation & Resources
+
+For complete API documentation and latest updates:
+
+- **NPM Package**: [vondera-app-developer](https://www.npmjs.com/package/vondera-app-developer)
+- **Vondera Developer Portal**: Check your Vondera developer dashboard for API documentation
+- **GitHub Repository**: [Vondera/SendGrid-Plugin](https://github.com/Vondera/SendGrid-Plugin)
+
+### Important Notes
+
+⚠️ **Edge Functions Implementation**: The Supabase Edge Functions use a simplified client implementation optimized for the serverless Deno runtime. The full SDK features are available when using the npm package in Node.js environments.
+
+⚠️ **Token Management**: Always store access and refresh tokens securely. The Edge Functions automatically handle token storage in the database, but in custom implementations, ensure proper token management and refresh logic.
+
+⚠️ **API Rate Limits**: Be aware of Vondera API rate limits when making multiple requests. Implement proper error handling and retry logic.
 
 ## 🔗 Configure Vondera Webhooks
 
