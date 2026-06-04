@@ -8,22 +8,19 @@ PROJECT_REF="mbijjcpkflglumzybund"
 echo "🚀 Deploying Vondera SendGrid Plugin to Supabase Edge Functions..."
 echo ""
 
-# Check if supabase CLI is installed
-if ! command -v supabase &> /dev/null; then
-    echo "❌ Supabase CLI is not installed."
-    echo "Install it with: npm install -g supabase"
-    exit 1
-fi
+npm run build
+
+SUPABASE_CLI="npx --yes supabase@latest"
 
 # Check if logged in
-if ! supabase projects list &> /dev/null; then
+if ! $SUPABASE_CLI projects list &> /dev/null; then
     echo "❌ Not logged in to Supabase."
     echo "Login with: supabase login"
     exit 1
 fi
 
 echo "📦 Deploying main webhook function (vondera-sendgrid)..."
-supabase functions deploy vondera-sendgrid --project-ref $PROJECT_REF --no-verify-jwt
+$SUPABASE_CLI functions deploy vondera-sendgrid --project-ref $PROJECT_REF --no-verify-jwt
 
 if [ $? -ne 0 ]; then
     echo "❌ Failed to deploy vondera-sendgrid function"
@@ -32,7 +29,7 @@ fi
 
 echo ""
 echo "📧 Deploying order email function (send-order-email)..."
-supabase functions deploy send-order-email --project-ref $PROJECT_REF --no-verify-jwt
+$SUPABASE_CLI functions deploy send-order-email --project-ref $PROJECT_REF --no-verify-jwt
 
 if [ $? -ne 0 ]; then
     echo "❌ Failed to deploy send-order-email function"

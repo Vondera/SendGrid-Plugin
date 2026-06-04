@@ -3,7 +3,11 @@
   "version": "1.0.0",
   "description": "Vondera plugin for SendGrid email notifications on new orders - Built with Supabase Edge Functions",
   "main": "supabase/functions/vondera-sendgrid/index.ts",
+  "dependencies": {
+    "vondera-app-developer": "^1.0.6"
+  },
   "scripts": {
+    "build": "npm install",
     "deploy": "./deploy.sh",
     "deploy:main": "supabase functions deploy vondera-sendgrid --project-ref mbijjcpkflglumzybund --no-verify-jwt",
     "deploy:email": "supabase functions deploy send-order-email --project-ref mbijjcpkflglumzybund --no-verify-jwt"

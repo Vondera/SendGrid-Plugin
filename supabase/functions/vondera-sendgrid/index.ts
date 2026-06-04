@@ -1,5 +1,6 @@
 // Setup type definitions for built-in Supabase Runtime APIs
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { VonderaClient } from "vondera-app-developer";
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 // Supabase Edge Function for Vondera SendGrid Plugin
@@ -10,28 +11,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
 };
-
-interface VonderaClientConfig {
-  clientId: string;
-  clientSecret: string;
-  appId: string;
-  locale?: string;
-  timezone?: string;
-}
-
-// Initialize Vondera Client (simplified - adjust based on actual SDK)
-class VonderaClient {
-  private config: VonderaClientConfig;
-  private accessToken?: string;
-
-  constructor(config: VonderaClientConfig) {
-    this.config = config;
-  }
-
-  setAccessToken(token: string) {
-    this.accessToken = token;
-  }
-}
 
 Deno.serve(async (req: Request) => {
   // Handle CORS preflight
@@ -57,6 +36,7 @@ Deno.serve(async (req: Request) => {
       clientSecret: Deno.env.get("VONDERA_CLIENT_SECRET") ?? "",
       appId: Deno.env.get("VONDERA_APP_ID") ?? "",
       locale: Deno.env.get("VONDERA_LOCALE") || "en",
+      storefrontId: Deno.env.get("VONDERA_STOREFRONT_ID") || "EG",
       timezone: Deno.env.get("VONDERA_TIMEZONE") || "Africa/Cairo",
     });
 
@@ -110,8 +90,9 @@ Deno.serve(async (req: Request) => {
       return await handleUninstall(supabase, vonderaClient, body);
     }
 
-    if (method === "POST" && (path === "/webhook/settings" || fullPath.includes("/webhook/settings"))) {
-      return await handleSettings(supabase, vonderaClient, body);
+    // Handle setup_form_update webhook at /webhook/setting endpoint
+    if (method === "POST" && (path === "/webhook/setting" || fullPath.includes("/webhook/setting"))) {
+      return await handleSetupFormUpdate(supabase, vonderaClient, body);
     }
 
     // API routes
@@ -451,6 +432,117 @@ async function handleSettings(supabase: any, vonderaClient: VonderaClient, paylo
     );
   } catch (error) {
     console.error("Settings handler error:", error);
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: "Internal server error",
+        details: error.message,
+      }),
+      {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 500,
+      }
+    );
+  }
+}
+
+// Handler: Setup form update webhook
+async function handleSetupFormUpdate(supabase: any, vonderaClient: VonderaClient, payload: any) {
+  try {
+    const store_id = payload.store_id || payload.storeId;
+    const setupData = payload.setup_data || {};
+
+    if (!store_id) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: "Missing required field: store_id",
+        }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 400,
+        }
+      );
+    }
+
+    // Extract settings from setup_data
+    const sendgridApiKey = setupData.sendgrid_api_key || setupData.sendgridApiKey;
+    const sendgridFromEmail = setupData.sendgrid_from_email || setupData.sendgridFromEmail;
+    const notificationEmail = setupData.notification_email || setupData.notificationEmail;
+    const emailTemplate = setupData.email_template || setupData.emailTemplate || setupData.sendgrid_template_id || setupData.sendgridTemplateId;
+    const isEnabled = setupData.enabled !== undefined ? setupData.enabled : true;
+
+    const settingsData: any = {
+      store_id: store_id,
+      sendgrid_api_key: sendgridApiKey,
+      sendgrid_from_email: sendgridFromEmail,
+      notification_email: notificationEmail,
+      email_template: emailTemplate,
+      enabled: isEnabled,
+      updated_at: new Date().toISOString(),
+    };
+
+    // Remove undefined fields
+    Object.keys(settingsData).forEach((key) => {
+      if (settingsData[key] === undefined) {
+        delete settingsData[key];
+      }
+    });
+
+    // Only update if there's actual data to save
+    if (Object.keys(settingsData).length > 1) { // More than just store_id
+      const { data, error } = await supabase
+        .from("user_settings")
+        .upsert(settingsData, {
+          onConflict: "store_id",
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error("Error saving settings:", error);
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: "Failed to save settings",
+            details: error.message,
+          }),
+          {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+            status: 500,
+          }
+        );
+      }
+
+      console.log(`⚙️  Settings updated via setup_form_update for store: ${store_id}`);
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          message: "Settings updated successfully",
+          store_id,
+          settings: data,
+        }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200,
+        }
+      );
+    } else {
+      // No settings data provided
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: "No settings data provided in setup_data",
+        }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 400,
+        }
+      );
+    }
+  } catch (error) {
+    console.error("Setup form update handler error:", error);
     return new Response(
       JSON.stringify({
         success: false,
